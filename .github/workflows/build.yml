@@ -81,7 +81,7 @@ jobs:
         strategy:
             matrix:
                 configuration: [Debug, Release]
-        runs-on: windows-latest
+        runs-on: ubuntu-latest
         defaults:
             run:
                 working-directory: ./Reactivities/client
@@ -95,6 +95,7 @@ jobs:
               with:
                   node-version: 20
                   cache: "npm"
+                  cache-dependency-path: Reactivities/client/package-lock.json
 
             - name: Install dependencies
               run: npm ci
