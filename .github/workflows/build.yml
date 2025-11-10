@@ -36,7 +36,7 @@
 # For a complete CI/CD sample to get started with GitHub Action workflows for Desktop Applications,
 # refer to https://github.com/microsoft/github-actions-for-desktop-apps
 
-name: Build API
+name: CI - Build, Test, Package
 
 on:
     push:
@@ -45,17 +45,28 @@ on:
         branches: ["main", "dev"]
 
 jobs:
+    # --------------------------------------------------------------------------------
+    # Job: Build API (matrix: Debug, Release)
+    # --------------------------------------------------------------------------------
     build:
         strategy:
             matrix:
                 configuration: [Debug, Release]
-        runs-on: windows-latest
+        runs-on: ubuntu-latest
 
         steps:
             - name: Checkout
               uses: actions/checkout@v4
               with:
                   fetch-depth: 0
+
+            - name: Cache NuGet packages
+              uses: actions/cache@v4
+              with:
+                  path: ~/.nuget/packages
+                  key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj') }}-${{ matrix.configuration }}
+                  restore-keys: |
+                      nuget-${{ runner.os }}-
 
             - name: Setup .NET
               uses: actions/setup-dotnet@v4
@@ -76,7 +87,9 @@ jobs:
               with:
                   name: API-publish-${{ matrix.configuration }}
                   path: ./publish/API-${{ matrix.configuration }}
-
+    # --------------------------------------------------------------------------------
+    # Job: Build Client (matrix: Debug, Release)
+    # --------------------------------------------------------------------------------
     build-client:
         strategy:
             matrix:
@@ -100,6 +113,15 @@ jobs:
             - name: Install dependencies
               run: npm ci
 
+            - name: Run client tests
+              # optional: run tests in the build job; remove if you prefer separate test job below
+              run: |
+                  if [ -f package.json ] && jq -e '.scripts.test' package.json >/dev/null 2>&1; then
+                      npm test || true
+                  else
+                      echo "No client tests defined"
+                  fi
+
             - name: Build frontend (Vite)
               run: npm run build
 
@@ -108,13 +130,68 @@ jobs:
               with:
                   name: client-build-${{ matrix.configuration }}
                   path: ./Reactivities/client/dist
-
-    package:
+    # --------------------------------------------------------------------------------
+    # Job: Test .NET (runs after API build)
+    # --------------------------------------------------------------------------------
+    test-dotnet:
+        runs-on: windows-latest
+        steps:
+            - uses: actions/checkout@v4
+            - name: Setup .NET
+              uses: actions/setup-dotnet@v4
+              with:
+                  dotnet-version: 8.0.x
+            - name: Restore
+              run: dotnet restore Reactivities/Reactivities.sln
+            - name: Run unit tests
+              run: dotnet test Reactivities/Reactivities.sln --configuration Release --no-restore --verbosity minimal
+    # --------------------------------------------------------------------------------
+    # Job: Test Client (runs after client build)
+    # --------------------------------------------------------------------------------
+    test-client:
+        name: Test - Client
         runs-on: ubuntu-latest
-        needs: [build, build-client]
+        needs: build-client
+        defaults:
+            run:
+                working-directory: ./Reactivities/client
         steps:
             - name: Checkout
               uses: actions/checkout@v4
+
+            - name: Use Node.js 20
+              uses: actions/setup-node@v4
+              with:
+                  node-version: 20
+                  cache: "npm"
+                  cache-dependency-path: Reactivities/client/package-lock.json
+
+            - name: Install dependencies
+              run: npm ci
+
+            - name: Run tests
+              run: |
+                  if [ -f package.json ] && jq -e '.scripts.test' package.json >/dev/null 2>&1; then
+                    npm test
+                  else
+                    echo "No client tests defined"
+                  fi
+    # --------------------------------------------------------------------------------
+    # Job: Package combined Release artifact (only packages Release artifacts)
+    # --------------------------------------------------------------------------------
+    package:
+        name: Package Release (API + Client)
+        runs-on: ubuntu-latest
+        needs: [build, build-client, test-dotnet, test-client]
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v4
+
+            - name: Create artifact folders
+              run: |
+                  mkdir -p ./artifacts/api
+                  mkdir -p ./artifacts/client
+                  mkdir -p ./combined_publish
 
             - name: Download API artifact (Release)
               uses: actions/download-artifact@v4
@@ -128,22 +205,33 @@ jobs:
                   name: client-build-Release
                   path: ./artifacts/client
 
+            - name: Inspect downloaded artifacts
+              run: |
+                  echo "API files:"
+                  ls -la ./artifacts/api || true
+                  echo "Client files:"
+                  ls -la ./artifacts/client || true
+
             - name: Prepare combined publish folder
               run: |
-                  mkdir -p ./combined_publish
                   # Copy API published files
-                  cp -r ./artifacts/api/* ./combined_publish/
-                  # Copy client static files into wwwroot (adjust destination if your API serves static files elsewhere)
+                  cp -r ./artifacts/api/* ./combined_publish/ || true
+                  # Ensure wwwroot exists and copy client static files there
                   mkdir -p ./combined_publish/wwwroot
-                  cp -r ./artifacts/client/* ./combined_publish/wwwroot/
+                  cp -r ./artifacts/client/* ./combined_publish/wwwroot/ || true
+
+            - name: Display combined_publish tree
+              run: |
+                  ls -la ./combined_publish
+                  ls -la ./combined_publish/wwwroot || true
 
             - name: Zip combined artifact
               run: |
                   cd combined_publish
-                  zip -r ../combined_publish.zip .
+                  zip -r ../reactivities-combined-Release.zip .
 
             - name: Upload combined artifact
               uses: actions/upload-artifact@v4
               with:
                   name: reactivities-combined-Release
-                  path: ./combined_publish.zip
+                  path: ./reactivities-combined-Release.zip
