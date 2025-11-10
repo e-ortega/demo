@@ -108,3 +108,42 @@ jobs:
               with:
                   name: client-build-${{ matrix.configuration }}
                   path: ./Reactivities/client/dist
+
+    package:
+        runs-on: ubuntu-latest
+        needs: [build, build-client]
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v4
+
+            - name: Download API artifact (Release)
+              uses: actions/download-artifact@v4
+              with:
+                  name: API-publish-Release
+                  path: ./artifacts/api
+
+            - name: Download client artifact (Release)
+              uses: actions/download-artifact@v4
+              with:
+                  name: client-build-Release
+                  path: ./artifacts/client
+
+            - name: Prepare combined publish folder
+              run: |
+                  mkdir -p ./combined_publish
+                  # Copy API published files
+                  cp -r ./artifacts/api/* ./combined_publish/
+                  # Copy client static files into wwwroot (adjust destination if your API serves static files elsewhere)
+                  mkdir -p ./combined_publish/wwwroot
+                  cp -r ./artifacts/client/* ./combined_publish/wwwroot/
+
+            - name: Zip combined artifact
+              run: |
+                  cd combined_publish
+                  zip -r ../combined_publish.zip .
+
+            - name: Upload combined artifact
+              uses: actions/upload-artifact@v4
+              with:
+                  name: reactivities-combined-Release
+                  path: ./combined_publish.zip
