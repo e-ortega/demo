@@ -106,5 +106,5 @@ jobs:
             - name: Upload frontend build artifact
               uses: actions/upload-artifact@v4
               with:
-                  name: client-build
+                  name: client-build-${{ matrix.configuration }}
                   path: ./Reactivities/client/dist
