@@ -1,0 +1,32 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Reactivities/API/Dockerfile
+      args:
+        CONFIGURATION: Release
+    image: demo-api:local
+    container_name: reactivities_api
+    ports:
+      - "5000:80"   # map container 80 -> host 5000
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+    networks:
+      - reactivities-net
+
+  client:
+    build:
+      context: Reactivities/client
+      dockerfile: Dockerfile
+    image: demo-client:local
+    container_name: reactivities_client
+    ports:
+      - "3000:80"   # serve client on host 3000
+    depends_on:
+      - api
+    networks:
+      - reactivities-net
+
+networks:
+  reactivities-net:
+    driver: bridge

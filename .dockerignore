@@ -1,0 +1,9 @@
+**/.git
+**/.github
+**/node_modules
+**/Reactivities/*/bin
+**/Reactivities/*/obj
+**/Reactivities/**/publish
+**/*.md
+**/*.log
+.DS_Store
