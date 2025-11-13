@@ -11,9 +11,14 @@ builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseSqlite(builder.Configuration.GetConnectionString("DefaultConnection"));
 });
 
+builder.Services.AddCors();
+
 var app = builder.Build();
 
+app.UseCors(options => options.AllowAnyHeader()
+.WithOrigins("http://localhost:3000", "https://localhost:3000"));
 app.MapControllers();
+
 
 //server location pattern
 using var scope = app.Services.CreateScope();
